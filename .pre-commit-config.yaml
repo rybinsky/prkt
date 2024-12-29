@@ -1,0 +1,19 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace  # Удаляет пробелы в конце строк
+      - id: end-of-file-fixer    # Убеждается, что файл заканчивается пустой строкой
+      - id: check-yaml           # Проверяет синтаксис YAML файлов
+      - id: check-added-large-files  # Проверяет, что не добавляются большие файлы
+
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black  # Автоматически форматирует Python код
+        args: [--line-length=120]
+
+  - repo: https://github.com/pre-commit/mirrors-isort
+    rev: v5.10.1
+    hooks:
+      - id: isort  # Сортирует импорты в Python файлах
