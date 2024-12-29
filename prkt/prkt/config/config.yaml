@@ -1,0 +1,18 @@
+paths:
+  # пути до конфигурации и весов модели
+  config: "prkt/yolo/yolov4-tiny.cfg"
+  weights: "prkt/yolo/yolov4-tiny.weights"
+  # путь до видео
+  video: "/Users/nikita/study/python/prkt/prkt/tests/test.mp4"
+
+model:
+  input_size: 608
+  confidence_threshold: 0.1
+  nms_threshold: 0.4
+
+parking:
+  iou_threshold_free: 0.4
+  iou_threshold_occupied: 0.6
+  free_space_timer: 60
+
+CLASS_IDX: 2
