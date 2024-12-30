@@ -14,8 +14,9 @@ def calculate_iou(box, boxes, box_area, boxes_area):
     iou = intersection / union
     return iou
 
+
 # Функция для расчета персечения всех со всеми через IoU
-def compute_overlaps(boxes1, boxes2):
+def compute_pairwise_overlaps(boxes1: np.ndarray, boxes2: np.ndarray):
     # Areas of anchors and GT boxes
     area1 = boxes1[:, 2] * boxes1[:, 3]
     area2 = boxes2[:, 2] * boxes2[:, 3]
@@ -24,6 +25,7 @@ def compute_overlaps(boxes1, boxes2):
         box2 = boxes2[i]
         overlaps[:, i] = calculate_iou(box2, boxes1, area2[i], area1)
     return overlaps
+
 
 # Функция для отрисовки Bounding Box в кадре
 def draw_bbox(image_to_process, x, y, w, h, parking_text, parking_color=(0, 255, 0)):
