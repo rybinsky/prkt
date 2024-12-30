@@ -60,7 +60,7 @@ class Camera:
 
     def get_parking_spaces(self, boxes: list, scores: list) -> list[ParkingSpace]:
         filtered_boxes = self._nms_filtering(boxes, scores)
-        return [ParkingSpace(*box, is_free=False) for box in filtered_boxes]
+        return [ParkingSpace(*box, is_free=False, free_time_thr=self.free_space_timer) for box in filtered_boxes]
 
     def get_current_frame_cars_boxes(self, boxes: list, scores: list) -> list:
         chosen_cars_boxes = self._nms_filtering(boxes, scores)
@@ -72,23 +72,15 @@ class Camera:
             self.current_image = draw_bbox(self.current_image, x, y, w, h, parking_text, (255, 255, 0))
         return cars
 
-    def get_free_parking_spaces(self, current_frame_cars_boxes: list) -> set:
-        free_spaces = set()
+    def get_free_parking_spaces(self, current_frame_cars_boxes: list) -> None:
         overlaps = compute_pairwise_overlaps(
             np.array([space.box for space in self.possible_parking_spaces]),
             np.array(current_frame_cars_boxes),
         )
         for parking_space, space_overlaps in zip(self.possible_parking_spaces, overlaps):
             parking_space.update_status(space_overlaps)
-        return free_spaces
 
     def run(self):
-        free_parking_timer = 0
-        free_parking_timer_bag1 = 0
-        free_parking_space = False
-        free_parking_space_box = None
-        check_det_frame = None
-
         video_capture = self._load_video()
         while video_capture.isOpened():
             ret, image_to_process = video_capture.read()
@@ -104,84 +96,17 @@ class Camera:
             else:
                 self.current_image = image_to_process
                 current_frame_cars_boxes = self.get_current_frame_cars_boxes(boxes, class_scores)
-                overlaps = compute_pairwise_overlaps(
-                    np.array([space.box for space in self.possible_parking_spaces]),
-                    np.array(current_frame_cars_boxes),
-                )
-
-                for parking_space_one, area_overlap in zip(self.possible_parking_spaces, overlaps):
-                    max_IoU = max(area_overlap)
-                    sort_IoU = np.sort(area_overlap[area_overlap > 0])[::-1]
-
-                    if free_parking_space == False:
-
-                        if 0.0 < max_IoU < self.iou_thr_free:
-
-                            # Количество паркомест по условию 1: 0.0 < IoU < 0.4
-                            len_sort = len(sort_IoU)
-
-                            # Количество паркомест по условию 2: IoU > 0.15
-                            sort_IoU_2 = sort_IoU[sort_IoU > 0.15]
-                            len_sort_2 = len(sort_IoU_2)
-
-                            # Смотрим чтобы удовлятворяло условию 1 и условию 2
-                            if (check_det_frame == parking_space_one) & (len_sort != len_sort_2):
-                                # Начинаем считать кадры подряд с пустыми координатами
-                                free_parking_timer += 1
-
-                            elif check_det_frame == None:
-                                check_det_frame = parking_space_one
-
-                            else:
-                                # Фильтр от чехарды мест (если место чередуется, то "скачет")
-                                free_parking_timer_bag1 += 1
-                                if free_parking_timer_bag1 == 2:
-                                    # Обнуляем счётчик, если паркоместо "скачет"
-                                    check_det_frame = parking_space_one
-                                    free_parking_timer = 0
-
-                            # Если более N кадров подряд, то предполагаем, что место свободно
-                            if free_parking_timer == self.free_space_timer:
-                                # Помечаем свободное место
-                                free_parking_space = True
-                                free_parking_space_box = parking_space_one.box
-                                # Отрисовываем рамку парковочного места
-                                x_free, y_free, w_free, h_free = parking_space_one.box
-
-                    else:
-                        # Если место занимают, то помечается как отсутствие свободных мест
-                        overlaps = compute_pairwise_overlaps(
-                            np.array([free_parking_space_box]),
-                            np.array(current_frame_cars_boxes),
-                        )
-                        for area_overlap in overlaps:
-                            max_IoU = max(area_overlap)
-                            if max_IoU > self.iou_thr_occupied:
-                                free_parking_space = False
+                self.get_free_parking_spaces(current_frame_cars_boxes)
 
             for parking_space in self.possible_parking_spaces:
-                if free_parking_space:
-                    if parking_space.box == (x_free, y_free, w_free, h_free):
-                        parking_text = "FREE SPACE!!!"
-                        self.current_image = draw_bbox(
-                            image_to_process,
-                            x_free,
-                            y_free,
-                            w_free,
-                            h_free,
-                            parking_text,
-                            (0, 0, 255),
-                        )
-                    else:
-                        x, y, w, h = parking_space.box
-                        parking_text = "No parking"
-                        self.current_image = draw_bbox(image_to_process, x, y, w, h, parking_text)
+                x, y, w, h = parking_space.box
+                if parking_space.free:
+                    parking_text = "FREE SPACE!!!"
+                    color = (0, 0, 255)
                 else:
-                    # Координаты и размеры BB
-                    x, y, w, h = parking_space.box
                     parking_text = "No parking"
-                    self.current_image = draw_bbox(image_to_process, x, y, w, h, parking_text)
-
+                    color = (0, 255, 0)
+                self.current_image = draw_bbox(image_to_process, x, y, w, h, parking_text, color)
             cv2.imshow("Parking Space", self.current_image)
 
             if cv2.waitKey(1) & 0xFF == ord("q"):

@@ -3,7 +3,7 @@ paths:
   config: "prkt/yolo/yolov4-tiny.cfg"
   weights: "prkt/yolo/yolov4-tiny.weights"
   # путь до видео
-  video: "/Users/nikita/study/python/park_at/prkt/prkt/tests/test1.mp4"
+  video: "/Users/nikita/study/python/park_at/prkt/prkt/tests/test2.mp4"
 
 model:
   input_size: 608
