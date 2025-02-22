@@ -167,6 +167,7 @@ class Camera:
 
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
-            time.sleep(0.1)
+            if isinstance(video_capture, ImageSource):
+                time.sleep(5)
         video_capture.release()
         cv2.destroyAllWindows()
