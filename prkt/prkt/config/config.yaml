@@ -3,7 +3,7 @@ paths:
   config: "prkt/yolo/yolov4-tiny.cfg"
   weights: "prkt/yolo/yolov4-tiny.weights"
   # путь до видео
-  video: "http://185.137.146.14/mjpg/video.mjpg"
+  video: /Users/nikita/study/python/park_at/prkt/prkt/tests/frames_3sec
   # http://46.160.254.214:80/mjpg/video.mjpg камера высоко -- пока не видит машины
   # http://185.137.146.14/mjpg/video.mjpg камера в чехии внизу норм качество
 
@@ -15,6 +15,6 @@ model:
 parking:
   iou_threshold_free: 0.4
   iou_threshold_occupied: 0.6
-  free_space_timer: 60
+  free_space_timer: 1
 
 CLASS_IDX: 2

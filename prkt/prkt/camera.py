@@ -1,3 +1,5 @@
+import os
+import time
 from typing import Sequence
 
 import cv2
@@ -5,6 +7,57 @@ from bbox import *
 from detector import CV2Image, Detector
 from omegaconf import DictConfig
 from parking_space import ParkingSpace
+
+
+class MediaSource:
+    def __init__(self, path: str):
+        self.path = path
+
+    def read(self):
+        raise NotImplementedError
+
+    def release(self):
+        raise NotImplementedError
+
+    def is_opened(self) -> bool:
+        raise NotImplementedError
+
+
+class VideoSource(MediaSource):
+    def __init__(self, path: str):
+        super().__init__(path)
+        self.cap = cv2.VideoCapture(self.path)
+
+    def read(self):
+        return self.cap.read()
+
+    def release(self):
+        self.cap.release()
+
+    def is_opened(self) -> bool:
+        return self.cap.isOpened()
+
+
+class ImageSource(MediaSource):
+    def __init__(self, path: str):
+        super().__init__(path)
+        self.images = sorted(
+            [os.path.join(path, img) for img in os.listdir(path) if img.endswith((".png", ".jpg", ".jpeg"))]
+        )
+        self.current_frame = 0
+
+    def read(self):
+        if self.current_frame < len(self.images):
+            image = cv2.imread(self.images[self.current_frame])
+            self.current_frame += 1
+            return True, image
+        return False, None
+
+    def release(self):
+        pass
+
+    def is_opened(self) -> bool:
+        return self.current_frame < len(self.images)
 
 
 class Camera:
@@ -22,8 +75,11 @@ class Camera:
         self.iou_thr_occupied = cfg.parking.iou_threshold_occupied
         self.current_image = None
 
-    def _load_video(self) -> cv2.VideoCapture:
-        return cv2.VideoCapture(self.video_path)
+    def _load_video(self) -> MediaSource:
+        if os.path.isdir(self.video_path):
+            return ImageSource(self.video_path)
+        else:
+            return VideoSource(self.video_path)
 
     def detect_objects(self, outputs: Sequence[CV2Image], image: CV2Image) -> tuple[list, list, list]:
         height, width, _ = image.shape
@@ -82,7 +138,7 @@ class Camera:
 
     def run(self):
         video_capture = self._load_video()
-        while video_capture.isOpened():
+        while video_capture.is_opened():
             ret, image_to_process = video_capture.read()
             if not ret:
                 break
@@ -111,5 +167,6 @@ class Camera:
 
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
+            time.sleep(0.1)
         video_capture.release()
         cv2.destroyAllWindows()
