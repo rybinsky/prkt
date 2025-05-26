@@ -1,7 +1,9 @@
 import os
+import time
 from typing import Sequence
 
 import cv2
+import requests
 from bbox import *
 from detector import CV2Image, Detector
 from media_source import ImageSource, MediaSource, VideoSource
@@ -22,7 +24,13 @@ class Camera:
         self.iou_thr_free = cfg.parking.iou_threshold_free
         self.free_space_timer = cfg.parking.free_space_timer
         self.iou_thr_occupied = cfg.parking.iou_threshold_occupied
+        self.width = self.height = None
         self.current_image = None
+        self.api_url = "https://api.parkat.ru/api/v1/admin/metrics/camera"
+        self.auth_token = "bdaf6b3be18bba9d831b86419b49edf0768e0406"
+        self.camera_id = cfg.camera_id
+        self.last_send_time = 0  # Время последней отправки данных
+        self.send_interval = 2  # Интервал отправки в секундах
 
     def _load_video(self) -> MediaSource:
         if os.path.isdir(self.video_path):
@@ -32,6 +40,8 @@ class Camera:
 
     def detect_objects(self, outputs: Sequence[CV2Image], image: CV2Image) -> tuple[list, list]:
         height, width, _ = image.shape
+        assert height == self.height
+        assert width == self.width
         class_indexes, class_scores, boxes = [], [], []
         for out in outputs:
             for obj in out:
@@ -77,13 +87,17 @@ class Camera:
             self.current_image = draw_bbox(self.current_image, x, y, w, h, parking_text, (255, 255, 0))
         return cars
 
-    def get_free_parking_spaces(self, current_frame_cars_boxes: list) -> None:
+    def get_free_parking_spaces(self, current_frame_cars_boxes: list) -> list[ParkingSpace]:
         overlaps = compute_pairwise_overlaps(
             np.array([space.box for space in self.possible_parking_spaces]),
             np.array(current_frame_cars_boxes),
         )
+        free_spaces = []
         for parking_space, space_overlaps in zip(self.possible_parking_spaces, overlaps):
             parking_space.update_status(space_overlaps)
+            if parking_space.free:
+                free_spaces.append(parking_space)
+        return free_spaces
 
     def run(self) -> None:
         video_capture = self._load_video()
@@ -91,6 +105,9 @@ class Camera:
             ret, image_to_process = video_capture.read()
             if not ret:
                 break
+            if not self.width and not self.height:
+                self.height, self.width, _ = image_to_process.shape
+
             outputs = self.net(image_to_process)
             boxes, class_scores = self.detect_objects(outputs, image_to_process)
 
@@ -101,7 +118,9 @@ class Camera:
             else:
                 self.current_image = image_to_process
                 current_frame_cars_boxes = self.get_current_frame_cars_boxes(boxes, class_scores)
-                self.get_free_parking_spaces(current_frame_cars_boxes)
+                # print(current_frame_cars_boxes)
+                free_spaces = self.get_free_parking_spaces(current_frame_cars_boxes)
+                self._send_parking_data(free_spaces)  # Send data to API
 
             for parking_space in self.possible_parking_spaces:
                 x, y, w, h = parking_space.box
@@ -116,7 +135,37 @@ class Camera:
 
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
-            # if isinstance(video_capture, ImageSource):
-            #     time.sleep(1)
+
         video_capture.release()
         cv2.destroyAllWindows()
+
+    def _send_parking_data(self, free_spaces: list[ParkingSpace]) -> None:
+        current_time = time.time()
+        if current_time - self.last_send_time < self.send_interval:
+            return
+
+        # Normalize bounding boxes to [0, 1] range
+        bbox_array = []
+
+        for space in free_spaces:
+            x, y, w, h = space.box
+            # Normalize coordinates (assuming self.width and self.height are set)
+            x1_norm = x / self.width
+            y1_norm = y / self.height
+            x2_norm = (x + w) / self.width
+            y2_norm = (y + h) / self.height
+
+            # Flatten to [x1, y1, x2, y2] format
+            bbox_array.extend([x1_norm, y1_norm, x2_norm, y2_norm])
+
+        data = {"bboxArray": bbox_array, "freePlaces": len(free_spaces), "cameraId": self.camera_id}
+
+        headers = {"Authorization": f"Token: {self.auth_token}", "Content-Type": "application/json"}
+
+        try:
+            response = requests.post(self.api_url, headers=headers, json=data, timeout=2)  # 2 seconds timeout
+            response.raise_for_status()
+            self.last_send_time = current_time  # Обновляем время последней отправки
+            # print(f"Data sent successfully at {time.strftime('%H:%M:%S')}")
+        except requests.exceptions.RequestException as e:
+            print(f"Failed to send parking data: {e}")
