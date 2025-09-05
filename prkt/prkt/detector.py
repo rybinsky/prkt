@@ -2,7 +2,6 @@ from pathlib import Path
 from typing import Sequence
 
 import cv2
-import numpy as np
 
 CV2Image = cv2.typing.MatLike
 
